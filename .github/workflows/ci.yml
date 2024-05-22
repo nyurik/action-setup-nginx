@@ -1,0 +1,104 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    - cron: "0 8 * * SUN"
+  workflow_dispatch:
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  default:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - ubuntu-24.04
+          - ubuntu-22.04
+          - ubuntu-20.04
+          - macos-latest
+          - macos-11
+          - macos-12
+          - macos-13
+          - macos-14  # M1 CPU
+          - windows-latest
+          - windows-2019
+          - windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run setup-nginx
+        uses: ./
+        id: nginx
+        with:
+          port: "8011"
+
+      - name: Run tests
+        run: |
+          values=(
+              'NGINX binary'          'bin'  '${{ steps.nginx.outputs.bin }}'
+              'configuration file'    'conf-path'  '${{ steps.nginx.outputs.conf-path }}'
+              'abs html dir path'    'html-dir'  '${{ steps.nginx.outputs.html-dir }}'
+              'service port'          'port'  '${{ steps.nginx.outputs.port }}'
+              'process ID'            'pid'  '${{ steps.nginx.outputs.pid }}'
+              'access log file'       'access-log'  '${{ steps.nginx.outputs.access-log }}'
+              'error log file'        'error-log'  '${{ steps.nginx.outputs.error-log }}'
+          )
+          for ((i=0; i<${#values[@]}; i+=3)); do
+              echo "${values[$i+1]} = '${values[$i+2]}' (${values[$i]})"
+          done
+          
+          # Add sample content to the html dir
+          echo "Hello, world!" > '${{ steps.nginx.outputs.html-dir }}/index.html'
+          
+          echo "## Get the index.html file"
+          curl -sS http://localhost:${{ steps.nginx.outputs.port }}/
+          echo "## Get a non-existent file"
+          curl -sS http://localhost:${{ steps.nginx.outputs.port }}/foobar
+          echo "----------------------------------------"
+
+          # Test that each value is non-empty after curl is successful
+          for ((i=0; i<${#values[@]}; i+=3)); do
+              if [[ -z "${values[$i+2]}" ]]; then
+                  echo "Value '${values[$i+1]}' is empty (${values[$i]})"
+                  exit 1
+              fi
+          done
+          
+          ACCESS_LOG="$(echo '${{ steps.nginx.outputs.access-log }}' | tr '\\' '/')"
+          ERROR_LOG="$(echo '${{ steps.nginx.outputs.error-log }}' | tr '\\' '/')"
+          
+          if [[ ! -f "$ACCESS_LOG" ]]; then
+              echo "Access log file '$ACCESS_LOG' does not exist"
+              exit 1
+          fi
+          if [[ ! -f "$ERROR_LOG" ]]; then
+              echo "Error log file '$ERROR_LOG' does not exist"
+              exit 1
+          fi
+          
+          echo "## Access log file:"
+          cat "$ACCESS_LOG"
+          echo "## Error log file:"
+          cat "$ERROR_LOG"
+          echo "----------------------------------------"
+
+          grep -q '127\.0\.0\.1.*GET /.* 200 ' "$ACCESS_LOG"
+          grep -q '127\.0\.0\.1.*GET /foobar.* 404 ' "$ACCESS_LOG"
+          
+          index_html="$(curl -sSf http://localhost:${{ steps.nginx.outputs.port }}/)"
+          if [[ "Hello, world!" = "$index_html"  ]]; then
+              echo "Content is correct"
+          else
+              echo "Expected content did not match the expected: 'Hello, world!'"
+              echo "Actual: '$index_html'"
+              exit 1
+          fi

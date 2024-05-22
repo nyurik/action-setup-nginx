@@ -1,0 +1,276 @@
+name: Setup NGINX service for Linux/macOS/Windows
+author: Yuri Astrakhan
+description: Setup and run NGINX server on all platforms.
+branding:
+  icon: server
+  color: purple
+inputs:
+  port:
+    description: The port number to use for the NGINX service, unless conf-file-text is set.
+    default: "8080"
+    required: false
+  conf-file-text:
+    description: The text of the entire configuration file to use for NGINX. This will ignore some other inputs.
+    default: ""
+    required: false
+outputs:
+  bin:
+    description: The path to the NGINX binary.
+    value: ${{ steps.detect_config.outputs.nginx_bin }}
+  conf-path:
+    description: The path to the NGINX configuration file.
+    value: ${{ steps.detect_config.outputs.conf_file }}
+  html-dir:
+    description: Default directory NGINX service uses as the root. This can be overridden by conf-file-text.
+    value: ${{ steps.detect_config.outputs.html_dir }}
+  pid:
+    description: The process ID of the NGINX service.
+    value: ${{ steps.detect_status.outputs.pid }}
+  port:
+    description: The port number used by the NGINX service.
+    value: ${{ steps.detect_status.outputs.port }}
+  access-log:
+    description: The path to the NGINX access log file, unless conf-file-text is provided.
+    value: ${{ steps.detect_config.outputs.access_log }}
+  error-log:
+    description: The path to the NGINX error log file, unless conf-file-text is provided.
+    value: ${{ steps.detect_config.outputs.error_log }}
+runs:
+  using: composite
+  steps:
+    - name: Install NGINX (Linux)
+      id: init_linux
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        echo "Init NGINX on ${{runner.os}} ${{runner.arch}} ${{runner.environment}} runner"
+        sudo systemctl status nginx || true
+        NGINX_BIN=$(which nginx)
+        nginx_info="$(sudo "$NGINX_BIN" -V 2>&1)"
+        echo "sudo $NGINX_BIN -V"
+        echo "$nginx_info"
+        nginx_prefix=$(echo "$nginx_info" | grep 'configure arguments:' | sed -n -e 's/.*--prefix=\(.*\)/\1/p' | cut -d' ' -f1)
+        [ -d "$nginx_prefix" ] || { echo "NGINX prefix directory $nginx_prefix could not be determined"; exit 1; }
+        echo "nginx_bin=$NGINX_BIN" >> $GITHUB_OUTPUT
+        CONF_FILE=$(sudo nginx -t 2>&1 | sed -n -e 's/.*configuration file \(.*\) test .*/\1/p' | head -1)
+        sudo chown -R $(whoami) $CONF_FILE
+        echo "conf_file=$CONF_FILE" >> $GITHUB_OUTPUT
+        echo "log_dir=/var/log/nginx" >> $GITHUB_OUTPUT
+        echo "html_dir=$nginx_prefix/html" >> $GITHUB_OUTPUT
+
+    - name: Install NGINX (macOS)
+      id: init_macos
+      if: runner.os == 'macOS'
+      shell: bash
+      run: |
+        echo "Init NGINX on ${{runner.os}} ${{runner.arch}} ${{runner.environment}} runner"
+        brew install nginx
+        brew services list | grep nginx
+        NGINX_BIN=$(which nginx)
+        nginx_info="$(sudo "$NGINX_BIN" -V 2>&1)"
+        echo "sudo $NGINX_BIN -V"
+        echo "$nginx_info"
+        nginx_prefix=$(echo "$nginx_info" | grep 'configure arguments:' | sed -n -e 's/.*--prefix=\(.*\)/\1/p' | cut -d' ' -f1)
+        [ -d "$nginx_prefix" ] || { echo "NGINX prefix directory $nginx_prefix could not be determined"; exit 1; }
+        echo "nginx_bin=$NGINX_BIN" >> $GITHUB_OUTPUT
+        CONF_FILE=$(sudo nginx -t 2>&1 | sed -n -e 's/.*configuration file \(.*\) test .*/\1/p' | head -1)
+        sudo chown -R $(whoami) $CONF_FILE
+        echo "conf_file=$CONF_FILE" >> $GITHUB_OUTPUT
+        echo "html_dir=$nginx_prefix/html" >> $GITHUB_OUTPUT
+        if [[ -d /usr/local/var/log/nginx ]]; then
+            echo "log_dir=/usr/local/var/log/nginx" >> $GITHUB_OUTPUT
+        else
+            echo "log_dir=/opt/homebrew/var/log/nginx" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Install NGINX (Windows)
+      id: init_windows
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        Write-Output "Init NGINX on ${{runner.os}} ${{runner.arch}} ${{runner.environment}} runner"
+        Get-Service nginx -ErrorAction SilentlyContinue
+        $nginx_root = Join-Path "C:\tools\" (Get-Item C:\tools\nginx*).Name
+        $nginx_bin = Join-Path $nginx_root "nginx"
+        $conf_file = Join-Path $nginx_root "\conf\nginx.conf"
+        & $nginx_bin -V
+        Add-Content -Path $env:GITHUB_OUTPUT -Encoding utf8 -Value "nginx_root=$nginx_root"
+        Add-Content -Path $env:GITHUB_OUTPUT -Encoding utf8 -Value "nginx_bin=$nginx_bin"
+        Add-Content -Path $env:GITHUB_OUTPUT -Encoding utf8 -Value "conf_file=$conf_file"
+        Add-Content -Path $env:GITHUB_OUTPUT -Encoding utf8 -Value "log_dir=$nginx_root\logs"
+        Add-Content -Path $env:GITHUB_OUTPUT -Encoding utf8 -Value "html_dir=$nginx_root\html"
+        Get-Content -Path $env:GITHUB_OUTPUT
+
+    - name: NGINX info
+      id: detect_config
+      shell: bash
+      run: |
+        echo 'Detected NGINX configuration for ${{ runner.os }} ${{ runner.arch }} on ${{ runner.name }}:'
+        if [[ '${{ runner.os }}' == 'Linux' ]]; then
+          nginx_bin='${{ steps.init_linux.outputs.nginx_bin }}'
+          conf_file='${{ steps.init_linux.outputs.conf_file }}'
+          html_dir='${{ steps.init_linux.outputs.html_dir }}'
+          access_log='${{ steps.init_linux.outputs.log_dir }}/access.log'
+          error_log='${{ steps.init_linux.outputs.log_dir }}/error.log'
+        elif [[ '${{ runner.os }}' == 'macOS' ]]; then
+          nginx_bin='${{ steps.init_macos.outputs.nginx_bin }}'
+          conf_file='${{ steps.init_macos.outputs.conf_file }}'
+          html_dir='${{ steps.init_macos.outputs.html_dir }}'
+          access_log='${{ steps.init_macos.outputs.log_dir }}/access.log'
+          error_log='${{ steps.init_macos.outputs.log_dir }}/error.log'
+        elif [[ '${{ runner.os }}' == 'Windows' ]]; then
+          nginx_bin='${{ steps.init_windows.outputs.nginx_bin }}'
+          conf_file='${{ steps.init_windows.outputs.conf_file }}'
+          html_dir='${{ steps.init_windows.outputs.html_dir }}'
+          access_log='${{ steps.init_windows.outputs.log_dir }}\access.log'
+          error_log='${{ steps.init_windows.outputs.log_dir }}\error.log'
+        else
+          echo 'Unknown OS: ${{ runner.os }}'
+          exit 1
+        fi
+
+        echo '::group::Original NGINX config file'
+        cat "$conf_file"
+        echo '::endgroup::NGINX config file'
+
+        echo "nginx_bin=$nginx_bin" >> $GITHUB_OUTPUT
+        echo "conf_file=$conf_file" >> $GITHUB_OUTPUT
+        echo "html_dir=$html_dir" >> $GITHUB_OUTPUT
+        echo "access_log=$access_log" >> $GITHUB_OUTPUT
+        echo "error_log=$error_log" >> $GITHUB_OUTPUT
+        cat $GITHUB_OUTPUT
+
+    - name: Overwrite NGINX configuration file
+      if: inputs.conf-file-text != ''
+      shell: bash
+      run: |
+        echo "Overwrite NGINX config ${{ steps.detect_config.outputs.conf_file }} for ${{ runner.os }} ${{ runner.arch }} on ${{ runner.name }} with the value of the input parameter."
+        echo "${{ inputs.conf-file-text }}" > "${{ steps.detect_config.outputs.conf_file }}"
+
+    - name: Create new NGINX configuration file
+      if: inputs.conf-file-text == ''
+      shell: bash
+      run: |
+        echo "Create new NGINX config ${{ steps.detect_config.outputs.conf_file }} for ${{ runner.os }} ${{ runner.arch }} on ${{ runner.name }}."
+        cat <<EOF > "${{ steps.detect_config.outputs.conf_file }}"
+        worker_processes 1;
+        events {
+            worker_connections 1024;
+        }
+        http {
+            include mime.types;
+            default_type application/octet-stream;
+            sendfile on;
+            keepalive_timeout 65;
+        
+            server {
+                listen ${{ inputs.port }};
+                server_name localhost;
+        
+                location / {
+                    root html;
+                    index index.html index.htm;
+                }
+        
+                error_page 500 502 503 504 /50x.html;
+                location = /50x.html {
+                    root html;
+                }
+            }
+        }
+        EOF
+
+    - name: Start NGINX (Linux)
+      if: runner.os == 'Linux'
+      id: start_linux
+      shell: bash
+      run: |
+        echo "Start NGINX ${{ steps.detect_config.outputs.nginx_bin }} on ${{runner.os}} using ${{ steps.detect_config.outputs.conf_file }}"
+        echo "::group::New NGINX configuration"
+        sudo ${{ steps.detect_config.outputs.nginx_bin }} -T
+        echo "::endgroup::"
+        sudo systemctl start nginx
+        sleep 2  # TODO: wait for the service to start in a loop instead of hardcoding a delay
+        sudo systemctl status nginx || true
+        echo "pid=$(systemctl show -p MainPID nginx | cut -d= -f2)" >> $GITHUB_OUTPUT
+        echo "port=$(sudo netstat -tulnp | grep nginx | awk '{print $4}' | sed -n -e 's/.*:\([0-9]*\)/\1/p' | head -1)" >> $GITHUB_OUTPUT
+
+    - name: Start NGINX (macOS)
+      if: runner.os == 'macOS'
+      id: start_macos
+      shell: bash
+      run: |
+        echo "Start NGINX ${{ steps.detect_config.outputs.nginx_bin }} on ${{runner.os}} using ${{ steps.detect_config.outputs.conf_file }}"
+        echo "::group::New NGINX configuration"
+        sudo ${{ steps.detect_config.outputs.nginx_bin }} -T
+        echo "::endgroup::"
+        brew services list | grep nginx
+        # There are some issues with starting nginx on macOS, so we force sudo. Expert help is welcome.
+        sudo nginx
+        # brew services start nginx
+        sleep 2
+        brew services list | grep nginx
+        if [[ -d /usr/local/var/log/nginx ]]; then
+          echo "pid=$(cat /usr/local/var/run/nginx.pid)" >> $GITHUB_OUTPUT
+        else
+          echo "pid=$(cat /opt/homebrew/var/run/nginx.pid)" >> $GITHUB_OUTPUT
+        fi
+        echo "port=$(sudo lsof -iTCP -sTCP:LISTEN -n -P | grep nginx | awk '{print $9}' | cut -d':' -f2 | head -1)" >> $GITHUB_OUTPUT
+
+    - name: Start NGINX (Windows)
+      if: runner.os == 'Windows'
+      id: start_windows
+      shell: pwsh
+      run: |
+        Write-Output "Start NGINX ${{ steps.detect_config.outputs.nginx_bin }} on ${{runner.os}} using ${{ steps.detect_config.outputs.conf_file }}"
+        Write-Output "::group::New NGINX configuration"
+        pushd ${{ steps.init_windows.outputs.nginx_root }}
+        & ${{ steps.detect_config.outputs.nginx_bin }} -T
+        popd
+        Write-Output "::endgroup::"
+
+        Set-Service nginx -StartupType manual
+        Start-Service nginx
+        Start-Sleep -Seconds 5
+        Get-Service nginx
+        Get-Process -Name nginx
+
+        $processes = Get-Process -Name nginx
+        $found = $false
+        foreach ($process in $processes) {
+            $connections = Get-NetTCPConnection -OwningProcess $process.Id -State Listen -ErrorAction SilentlyContinue
+            if ($?) {
+                foreach ($connection in $connections) {
+                    if ($connection) {
+                      Add-Content -Path $env:GITHUB_OUTPUT -Encoding utf8 -Value "pid=$($process.Id)"
+                      Add-Content -Path $env:GITHUB_OUTPUT -Encoding utf8 -Value "port=$($connection.LocalPort)"
+                      $found = $true
+                      break
+                    }
+                }
+                if ($found) {
+                    break
+                }
+            }
+        }
+        
+        Get-Content -Path $env:GITHUB_OUTPUT
+
+    - name: Output NGINX info
+      id: detect_status
+      shell: bash
+      run: |
+        echo "NGINX service was started for ${{ runner.os }} ${{ runner.arch }} on ${{ runner.name }}"
+        if [[ "${{ runner.os }}" == "Linux" ]]; then
+            echo "pid=${{ steps.start_linux.outputs.pid }}" >> $GITHUB_OUTPUT
+            echo "port=${{ steps.start_linux.outputs.port }}" >> $GITHUB_OUTPUT
+        elif [[ "${{ runner.os }}" == "macOS" ]]; then
+            echo "pid=${{ steps.start_macos.outputs.pid }}" >> $GITHUB_OUTPUT
+            echo "port=${{ steps.start_macos.outputs.port }}" >> $GITHUB_OUTPUT
+        elif [[ "${{ runner.os }}" == "Windows" ]]; then
+            echo "pid=${{ steps.start_windows.outputs.pid }}" >> $GITHUB_OUTPUT
+            echo "port=${{ steps.start_windows.outputs.port }}" >> $GITHUB_OUTPUT
+        else
+            exit 1
+        fi
+        cat $GITHUB_OUTPUT
