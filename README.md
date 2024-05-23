@@ -2,6 +2,7 @@
 
 [![GitHub](https://img.shields.io/badge/github-nyurik/action--setup--nginx-8da0cb?logo=github)](https://github.com/nyurik/action-setup-nginx)
 [![CI build](https://github.com/nyurik/action-setup-nginx/actions/workflows/ci.yml/badge.svg)](https://github.com/nyurik/action-setup-nginx/actions)
+[![Marketplace](https://img.shields.io/badge/market-action--setup--nginx-6F42C1?logo=github)](https://github.com/marketplace/actions/setup-nginx-service-for-linux-macos-windows)
 
 This action sets up a NGINX web server.
 
@@ -12,6 +13,8 @@ This action sets up a NGINX web server.
 * Overrides default configuration with a simpler and more cross-platform consistent one (can be user-supplied)
 * As output, provides the location of the root html dir, process ID, and access and error log files.
 * [Easy to check](action.yml) that IT DOES NOT contain malicious code.
+
+See also [action-setup-postgis](https://github.com/nyurik/action-setup-postgis) to configure PostGIS service.
 
 ## Usage
 
