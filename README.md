@@ -9,10 +9,26 @@ This action sets up a NGINX web server.
     * On Linux, assumes it is pre-installed
     * On macOS, installs using [Homebrew](https://formulae.brew.sh/formula/nginx)
     * On Windows, assumes it is pre-installed
-* Configures the server with the provided configuration file content (if set)
+* Overrides default configuration with a simpler and more cross-platform consistent one (can be user-supplied)
+* As output, provides the location of the root html dir, process ID, and access and error log files.
 * [Easy to check](action.yml) that IT DOES NOT contain malicious code.
 
 ## Usage
+
+```yaml
+steps:
+  - uses: nyurik/action-setup-nginx@v1
+    id: nginx
+
+  - run: |
+      echo "Hello, world!" > "${{ steps.nginx.outputs.html-dir }}/index.html"
+      
+      curl http://localhost:${{ steps.nginx.outputs.port }}/
+      # Expected output: Hello, world!
+
+      cat "${{ steps.nginx.outputs.access-log }}"
+      # Expected to contain a line with   GET /   HTTP/1.1   200
+```
 
 #### Input parameters
 
@@ -32,23 +48,6 @@ This action sets up a NGINX web server.
 | port       | The port number used by the NGINX service.                                                  |
 | access-log | The path to the NGINX access log file, unless conf-file-text is provided.                   |
 | error-log  | The path to the NGINX error log file, unless conf-file-text is provided.                    |
-
-#### Basic
-
-```yaml
-steps:
-  - uses: nyurik/action-setup-nginx@v1
-    id: nginx
-
-  - run: |
-      echo "Hello, world!" > "${{ steps.nginx.outputs.html-dir }}/index.html"
-      
-      curl http://localhost:${{ steps.nginx.outputs.port }}/
-      # Expected output: Hello, world!
-
-      cat "${{ steps.nginx.outputs.access-log }}"
-      # Expected to contain a line with   GET /   HTTP/1.1   200
-```
 
 ## License
 
