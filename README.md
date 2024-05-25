@@ -35,10 +35,11 @@ steps:
 
 #### Input parameters
 
-| Param          | Description                                                                 | Default |
-|----------------|-----------------------------------------------------------------------------|---------|
-| port           | The port number to use for the NGINX service, unless conf-file-text is set. | 8080    |
-| conf-file-text | Optional content of the nginx.conf file, overrides the default one          |         |
+| Param             | Description                                                                                                                           | Default |
+|-------------------|---------------------------------------------------------------------------------------------------------------------------------------|---------|
+| port              | The port number to use for the NGINX service, unless conf-file-text is set.                                                           | 8080    |
+| conf-file-text    | Optional content of the nginx.conf file, overrides the default one                                                                    |         |
+| output-unix-paths | If set to a non-empty value, will use Unix paths in the output. This is only relevant on Windows runners, ignored on other platforms. |         |
 
 #### Outputs
 

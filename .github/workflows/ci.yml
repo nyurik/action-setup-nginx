@@ -32,14 +32,55 @@ jobs:
           - windows-latest
           - windows-2019
           - windows-2022
+        conf-file-text: [""]
+        output-unix-paths: [""]
+        include:
+          - os: ubuntu-latest
+            conf-file-text: "custom-conf"
+          - os: macos-latest
+            conf-file-text: "custom-conf"
+          - os: windows-latest
+            conf-file-text: "custom-conf"
+          - os: windows-latest
+            output-unix-paths: "unix-path"
+
     steps:
       - uses: actions/checkout@v4
+
+      - name: Override default nginx configuration with a custom one
+        id: set-conf
+        if: ${{ matrix.conf-file-text == 'custom-conf' }}
+        run: |
+          # Create multiline var
+          CONFIG="\
+          worker_processes 1;
+          events {
+              worker_connections 512;
+          }
+          http {
+              include mime.types;
+              default_type application/octet-stream;
+              sendfile on;
+              keepalive_timeout 65;
+              server {
+                  listen 8001;
+                  server_name localhost;
+                  location / {
+                      root html;
+                      index index.html index.htm;
+                  }
+              }
+          }"
+          
+          printf "conf_file_text<<EOF\n%s\nEOF" "${CONFIG}" >> "$GITHUB_OUTPUT"
 
       - name: Run setup-nginx
         uses: ./
         id: nginx
         with:
           port: "8011"
+          conf-file-text: "${{ steps.set-conf.outputs.conf_file_text }}"
+          output-unix-paths: "${{ matrix.output-unix-paths }}"
 
       - name: Run tests
         run: |
