@@ -62,13 +62,17 @@ runs:
         echo "log_dir=/var/log/nginx" >> $GITHUB_OUTPUT
         echo "html_dir=$nginx_prefix/html" >> $GITHUB_OUTPUT
 
+    - name: Install NGINX with Homebrew (macOS)
+      uses: tecolicom/actions-use-homebrew-tools@v1
+      if: runner.os == 'macOS'
+      with: { tools: 'nginx' }
+
     - name: Install NGINX (macOS)
       id: init_macos
       if: runner.os == 'macOS'
       shell: bash
       run: |
         echo "Init NGINX on ${{runner.os}} ${{runner.arch}} ${{runner.environment}} runner"
-        brew install nginx
         brew services list | grep nginx
         NGINX_BIN=$(which nginx)
         nginx_info="$(sudo "$NGINX_BIN" -V 2>&1)"
