@@ -13,28 +13,32 @@ inputs:
     description: The text of the entire configuration file to use for NGINX. This will ignore some other inputs.
     default: ""
     required: false
+  output-unix-paths:
+    description: If set to a non-empty value, will use Unix paths in the output. This is only relevant on Windows runners, ignored on other platforms.
+    default: ""
+    required: false
 outputs:
   bin:
     description: The path to the NGINX binary.
-    value: ${{ steps.detect_config.outputs.nginx_bin }}
+    value: ${{ steps.results.outputs.nginx_bin }}
   conf-path:
     description: The path to the NGINX configuration file.
-    value: ${{ steps.detect_config.outputs.conf_file }}
+    value: ${{ steps.results.outputs.conf_file }}
   html-dir:
     description: Default directory NGINX service uses as the root. This can be overridden by conf-file-text.
-    value: ${{ steps.detect_config.outputs.html_dir }}
+    value: ${{ steps.results.outputs.html_dir }}
   pid:
     description: The process ID of the NGINX service.
-    value: ${{ steps.detect_status.outputs.pid }}
+    value: ${{ steps.results.outputs.pid }}
   port:
     description: The port number used by the NGINX service.
-    value: ${{ steps.detect_status.outputs.port }}
+    value: ${{ steps.results.outputs.port }}
   access-log:
     description: The path to the NGINX access log file, unless conf-file-text is provided.
-    value: ${{ steps.detect_config.outputs.access_log }}
+    value: ${{ steps.results.outputs.access_log }}
   error-log:
     description: The path to the NGINX error log file, unless conf-file-text is provided.
-    value: ${{ steps.detect_config.outputs.error_log }}
+    value: ${{ steps.results.outputs.error_log }}
 runs:
   using: composite
   steps:
@@ -257,7 +261,7 @@ runs:
         Get-Content -Path $env:GITHUB_OUTPUT
 
     - name: Output NGINX info
-      id: detect_status
+      id: results
       shell: bash
       run: |
         echo "NGINX service was started for ${{ runner.os }} ${{ runner.arch }} on ${{ runner.name }}"
@@ -273,4 +277,21 @@ runs:
         else
             exit 1
         fi
+        
+        # if windows and output-unix-paths is set, convert paths to Unix style
+        if [[ '${{ runner.os }}' == 'Windows' && '${{ inputs.output-unix-paths }}' != '' ]]; then
+            echo "Converting Windows paths to Unix style"
+            echo "nginx_bin=$(cygpath -u '${{ steps.detect_config.outputs.nginx_bin }}')" >> $GITHUB_OUTPUT
+            echo "conf_file=$(cygpath -u '${{ steps.detect_config.outputs.conf_file }}')" >> $GITHUB_OUTPUT
+            echo "html_dir=$(cygpath -u '${{ steps.detect_config.outputs.html_dir }}')" >> $GITHUB_OUTPUT
+            echo "access_log=$(cygpath -u '${{ steps.detect_config.outputs.access_log }}')" >> $GITHUB_OUTPUT
+            echo "error_log=$(cygpath -u '${{ steps.detect_config.outputs.error_log }}')" >> $GITHUB_OUTPUT
+        else
+            echo 'nginx_bin=${{ steps.detect_config.outputs.nginx_bin }}' >> $GITHUB_OUTPUT
+            echo 'conf_file=${{ steps.detect_config.outputs.conf_file }}' >> $GITHUB_OUTPUT
+            echo 'html_dir=${{ steps.detect_config.outputs.html_dir }}' >> $GITHUB_OUTPUT
+            echo 'access_log=${{ steps.detect_config.outputs.access_log }}' >> $GITHUB_OUTPUT
+            echo 'error_log=${{ steps.detect_config.outputs.error_log }}' >> $GITHUB_OUTPUT
+        fi
+
         cat $GITHUB_OUTPUT
